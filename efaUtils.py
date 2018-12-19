@@ -79,17 +79,13 @@ def plotScree(eigenvalues, eigenPvals=None, kaiser=False, fname=None):
         A vector of p-values corresponding to a permutation test
     
     kaiser : bool
-        Plot the Kaiser criterion on the scree 
+        Plot the Kaiser criterion on the scree
+        Note: Kaiser test only suitable for standarized data
         
     Optional
     --------
     fname : filepath
         filepath for saving the image
-        
-    Returns
-    -------
-    fig, ax, ax2 : matplotib objects
-        Figure, axes handles for the scree plot
     """
     
     percentVar = (np.multiply(100, eigenvalues)) / np.sum(eigenvalues)
@@ -132,19 +128,73 @@ def plotScree(eigenvalues, eigenPvals=None, kaiser=False, fname=None):
         fig.savefig(fname, bbox_inches='tight')
     return fig, ax, ax2
 
-def plotLoadings(fpair, flabel=[1,2], colors=None, text=None, fname=None):
-    load1 = fpair[:, 0]
-    load2 = fpair[:, 1]
-    fig,ax = plt.subplots(figsize=(10,10))
-#    ax.set_title("Factor Loadings", fontsize='xx-large')
-    ax.scatter(load1, load2, c=colors)
-    ax.axhline(0, color='k')
-    ax.axvline(0, color='k')
+def plotCircleOfCorr(fa, factors=(1, 2), col=None, text=None, fname=None):
+    """
+    Plot factor loadings as a circle of correlation
+    
+    Built around the ETS factor_analyzer module (v0.2.3)
+    
+    Parameters
+    ----------
+    fa : factor_analyzer object
+    
+    factors : tuple
+        A tuple indicating the factor loadings to plot 
+        Defaults to the first two factors
+    
+    Optional
+    --------
+    col : list
+        List of colors to assign to points on plot 
+        Defaults to black
+    
+    text : list
+        List of strings to assign to points
+    
+    fname : filepath
+        Path to save image
+        
+    See Abdi & Williams 2010 for more.
+    
+    import matplotlib as mpl
+    mpl.rcParams.update(mpl.rcParamsDefault)
+    
+    import seaborn as sns
+    sns.set()
+    """
+    import seaborn as sns
+    sns.set()
+    sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
+    f1 = int(factors[0])
+    f2 = int(factors[1])
+    fi1 = int(factors[0]-1)
+    fi2 = int(factors[1]-1)
+    
+    loadings = fa.loadings
+    eigs = fa.get_eigenvalues()[0].values
+    percentVar = (np.multiply(100, eigs)) / np.sum(eigs)
+    perToPlot = [percentVar[fi1], percentVar[fi2]]
+    
+    load1 = loadings.values[:, fi1]
+    load2 = loadings.values[:, fi2]
+    
+    xlabel = "Factor %d (%.2f%% of variance explained)" % (f1, perToPlot[0])
+    ylabel = "Factor %d (%.2f%% of variance explained)" % (f2, perToPlot[1])
+    circ = plt.Circle((0, 0), radius=1, edgecolor='w', facecolor='None', linewidth=1, linestyle='--')
+    
+    if col is None:
+        col = ['k']*len(load1)
+    
+    fig,ax = plt.subplots(figsize=(7.5,7.5))
+    ax.add_patch(circ)
+
+    ax.scatter(load1, load2, c=col, zorder=99, s=75, alpha=.75)
+    ax.axhline(0, color='w', linewidth=1)
+    ax.axvline(0, color='w', linewidth=1)
     ax.set_xlim(-1, 1)
     ax.set_ylim(-1, 1)
-    ax.set_xlabel('Factor %d' % int(flabel[0]), fontsize='x-large')
-    ax.set_ylabel('Factor %d' % int(flabel[1]), fontsize='x-large')
-    
+    ax.set_xlabel(xlabel, fontsize='x-large')
+    ax.set_ylabel(ylabel, fontsize='x-large')
     if text is not None and len(text) == len(load1):
         texts = []
         for i,s in enumerate(text):
@@ -153,7 +203,6 @@ def plotLoadings(fpair, flabel=[1,2], colors=None, text=None, fname=None):
         
     if fname:
         fig.savefig(fname, bbox_inches='tight')
-    return fig, ax
 
 def createColorSpace(loadingsPair):
     factorOne = loadingsPair[:,0]
@@ -175,7 +224,9 @@ def createColorSpace(loadingsPair):
     return R, theta, rgb
 
 def createColorLegend(R, theta, fname=None):
-    figsize = 5
+    import matplotlib as mpl
+    mpl.rcParams.update(mpl.rcParamsDefault)
+    figsize = 7.5
     #labs example
     #labs = ['+ F1','','+ F2','','- F1','','- F2','']
 
@@ -208,7 +259,7 @@ def createColorLegend(R, theta, fname=None):
     ax.scatter(theta, R, c='w',s=75, edgecolors='none', alpha=.75)
     
     if fname is not None:
-        plt.savefig(fname, dpi=300, facecolor='w')
+        plt.savefig(fname, dpi=300, facecolor='w', bbox_inches='tight')
 
 def plotBrains(nodeCoords, nodeColors, fname=None):
     numc = len(nodeColors)
