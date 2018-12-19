@@ -136,10 +136,12 @@ def plotLoadings(fpair, flabel=[1,2], colors=None, text=None, fname=None):
     load1 = fpair[:, 0]
     load2 = fpair[:, 1]
     fig,ax = plt.subplots(figsize=(10,10))
-    ax.set_title("Factor Loadings", fontsize='xx-large')
+#    ax.set_title("Factor Loadings", fontsize='xx-large')
     ax.scatter(load1, load2, c=colors)
     ax.axhline(0, color='k')
     ax.axvline(0, color='k')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
     ax.set_xlabel('Factor %d' % int(flabel[0]), fontsize='x-large')
     ax.set_ylabel('Factor %d' % int(flabel[1]), fontsize='x-large')
     
