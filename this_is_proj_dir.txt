@@ -1,0 +1,3 @@
+If you rename this file, I hate you.
+
+Original filename = this_is_proj_dir.txt
