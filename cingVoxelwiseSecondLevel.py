@@ -11,8 +11,14 @@ import os
 import numpy as np
 import h5py
 import re
-import datetime
+import time
+import random
 from scipy.stats import ttest_1samp
+
+def sleeper(tc=30):
+    """Quick sleep function to prevent overlap of cluster jobs"""
+    t = random.randint(1, 9)
+    time.sleep(t*tc)
 
 #--- Funtions for getting column data ---#
 def chunk_getter(maxcol, chunk_size=1000):
@@ -47,95 +53,95 @@ def alphanum_key(s):
     """
     return [tryint(c) for c in re.split('([0-9]+)', s)]
 
-with open("secondLevPathsPrivate.txt") as f:
-    paths = ["r"+k.replace("\n", "") for k in f]
-    
-chunkDir =  paths[0]
-dataDir = paths[1]
-outDir = paths[2]
-
-subjects = os.listdir(dataDir)
-aal2CingMask = sorted(os.listdir(chunkDir))[0] #Edit cingulum chunk here!!!
-maskName = aal2CingMask.replace(".nii.gz","")
-
-print("%s Getting metadata for %s" % (datetime.datetime.now(), maskName))
-hf = h5py.File(os.path.join(dataDir,subjects[0]), 'r')
-keynames = list(hf.keys())
-keynames.sort(key=alphanum_key)
-brainSize = len(hf[keynames[0]][:,0])
-
-maxColsInMask = int(keynames[-1].split()[-1]) #Last key in key names, last value in key
-hf.close()
-
-print("%s Running ttests for %s" % (datetime.datetime.now(), maskName))
-
-tmaskBrainData = np.ndarray(shape=[maxColsInMask, brainSize])
-pmaskBrainData = np.ndarray(shape=[maxColsInMask, brainSize])
-
-chunkSize = 10 #doing ttests on small number of voxels at a time
-
-#vox = 0
-for key in keynames:
-    f = "%s_%s_secondLev.hdf5" % (maskName, key)
-    fname = os.path.join(outDir, f)
-    if os.path.isfile(fname):
-        continue
-    else:
-        file = h5py.File(fname, "a")
-        file.close()
+def secondLevel():
+    with open("secondLevPathsPrivate.txt") as f:
+        paths = [k.replace("\n", "") for k in f]
         
-    a = int(key.split()[-1])
-    b = int(key.split()[-3])
+    chunkDir = paths[0]
+    dataDir = paths[1]
+    outDir = paths[2]
     
-    if (a - b + 1) == 1000:
-        maxColsInKey = 1000
-    else:
-        maxColsInKey = int(a - b)
-        #int(key.split()[-1])
-    chunks = chunk_getter(maxColsInKey, chunkSize)
-    vox = 0
-    for chunk in range(chunks):
-        colrange = colrange_getter(maxColsInKey, chunk, chunkSize)
-        #--- Running ttests on each voxel of a chunk of hdf5 dataset ---#
-        for voxel in list(colrange):
-            #--- initialize second level matrix ---#
-            secondLevelData = np.ndarray(shape=[len(subjects), brainSize])
-            for s,subj in enumerate(subjects):
-                subjFile = os.path.join(dataDir, subj)
-                hf = h5py.File(subjFile, 'r')
-                data = hf[key][:, int(voxel)]
-                hf.close()
+    allSubjects = os.listdir(dataDir)
+    chunkSize = 10 #extracts "small" amounts of data at a time
+    
+    aalChunks = sorted(os.listdir(chunkDir))[1:]
+    for aal2 in aalChunks:
+        sleeper()
+        
+        maskName = aal2.replace(".nii.gz","")
+        subjects = [s for s in allSubjects if maskName in s]
+        
+        hf = h5py.File(os.path.join(dataDir,subjects[0]), 'r')
+        keynames = list(hf.keys())
+        keynames.sort(key=alphanum_key)
+        brainSize = len(hf[keynames[0]][:,0])
+        hf.close()
+    
+        for key in keynames:
+            sleeper()
+            
+            b = int(key.split()[-1])
+            a = int(key.split()[-3])
+            if (b - a + 1) == 1000:
+                maxColsInKey = 1000
+            else:
+                maxColsInKey = int(b - a)    
+        
+            fname = "%s_cols_%d_to_%d.hdf5" % (maskName, a, b)
+            fpath = os.path.join(outDir, fname)
+            if os.path.isfile(fpath):
+                continue
+            else:
+                file = h5py.File(fpath, "a")
+                file.close()
                 
-                np.nan_to_num(data, copy=False)
-                data[data>=1.0] = 1 - 1e-6
-                data[data<=-1.0] = -1 + 1e-6
-
-                zData = np.arctanh(data) #fisher transform
-
-                np.nan_to_num(zData, copy=False)
-                secondLevelData[s, :] = zData 
-                del data
-
-            #--- whole brain t-test ---#    
-            popmean = np.zeros(shape=[1, brainSize])
-
-            tBrain, pBrain = ttest_1samp(secondLevelData, popmean, axis=0)
-
-            tmaskBrainData[vox, :] = tBrain
-            pmaskBrainData[vox, :] = pBrain
-            del secondLevelData
-            vox += 1
-    
-    file = h5py.File(fname, "a")
-    file.create_dataset("tBrains",
-                        shape=tmaskBrainData.shape,
-                        dtype="f",
-                        data=tmaskBrainData)
-    file.create_dataset("pBrains",
-                        shape=pmaskBrainData.shape,
-                        dtype="f",
-                        data=pmaskBrainData)
-    file.close()
-    
-    del tmaskBrainData
-    del pmaskBrainData
+            tmaskBrainData = np.ndarray(shape=[maxColsInKey, brainSize])
+            pmaskBrainData = np.ndarray(shape=[maxColsInKey, brainSize])
+            
+            chunks = chunk_getter(maxColsInKey, chunkSize)
+            vox = 0
+            for chunk in range(chunks):
+                colrange = colrange_getter(maxColsInKey, chunk, chunkSize)
+                for voxel in list(colrange):
+                    secondLev = np.ndarray(shape=[len(subjects), brainSize])
+                    for s,subj in enumerate(subjects):
+                        subjFile = os.path.join(dataDir, subj)
+                        hf = h5py.File(subjFile, 'r')
+                        data = hf[key][:, int(voxel)]
+                        hf.close()
+                        
+                        np.nan_to_num(data, copy=False)
+                        data[data>=1.0] = 1 - 1e-6
+                        data[data<=-1.0] = -1 + 1e-6
+        
+                        zData = np.arctanh(data) #fisher transform
+        
+                        np.nan_to_num(zData, copy=False)
+                        secondLev[s, :] = zData 
+                        del data
+        
+                    #--- whole brain t-test ---#    
+                    popmean = np.zeros(shape=[1, brainSize])
+        
+                    tBrain, pBrain = ttest_1samp(secondLev, popmean, axis=0)
+        
+                    tmaskBrainData[vox, :] = tBrain
+                    pmaskBrainData[vox, :] = pBrain
+                    del secondLev
+                    vox += 1
+            
+            file = h5py.File(fpath, "a")
+            file.create_dataset("tBrains",
+                                shape=tmaskBrainData.shape,
+                                dtype="f",
+                                data=tmaskBrainData)
+            file.create_dataset("pBrains",
+                                shape=pmaskBrainData.shape,
+                                dtype="f",
+                                data=pmaskBrainData)
+            file.close()
+            
+            del tmaskBrainData
+            del pmaskBrainData
+if __name__ == "__main__":
+    secondLevel()
