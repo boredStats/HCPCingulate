@@ -6,6 +6,8 @@ Utilities for exploratory factor analysis
 """
 import pylab
 import numpy as np
+import matplotlib as mpl
+import seaborn as sns
 import sklearn.decomposition as decomp
 import matplotlib.pyplot as plt
 from sklearn.utils import resample
@@ -16,8 +18,15 @@ from copy import deepcopy
 
 def centerMat(data):
     #Remove means from each column in a matrix
-    data -= np.mean(data, axis=0)
-    return data
+    return data - np.mean(data, axis=0)
+
+def normTo1(data):
+    #Normalize all values to have a 0-1 range
+    mx = np.max(data)
+    mn = np.min(data)
+    d = mx-mn
+    r = np.subtract(data, mn)
+    return (2*(np.divide(r, d)))-1
 
 def permPCA(data, nIters=1000):
     """
@@ -79,18 +88,18 @@ def plotScree(eigenvalues, eigenPvals=None, kaiser=False, fname=None):
         A vector of p-values corresponding to a permutation test
     
     kaiser : bool
-        Plot the Kaiser criterion on the scree 
+        Plot the Kaiser criterion on the scree
+        Note: Kaiser test only suitable for standarized data
         
     Optional
     --------
     fname : filepath
         filepath for saving the image
-        
     Returns
     -------
-    fig, ax, ax2 : matplotib objects
-        Figure, axes handles for the scree plot
+    fig, ax1, ax2 : matplotlib figure handles
     """
+    mpl.rcParams.update(mpl.rcParamsDefault)
     
     percentVar = (np.multiply(100, eigenvalues)) / np.sum(eigenvalues)
     cumulativeVar = np.zeros(shape=[len(percentVar)])
@@ -132,19 +141,69 @@ def plotScree(eigenvalues, eigenPvals=None, kaiser=False, fname=None):
         fig.savefig(fname, bbox_inches='tight')
     return fig, ax, ax2
 
-def plotLoadings(fpair, flabel=[1,2], colors=None, text=None, fname=None):
-    load1 = fpair[:, 0]
-    load2 = fpair[:, 1]
-    fig,ax = plt.subplots(figsize=(10,10))
-#    ax.set_title("Factor Loadings", fontsize='xx-large')
-    ax.scatter(load1, load2, c=colors)
-    ax.axhline(0, color='k')
-    ax.axvline(0, color='k')
+def plotCircleOfCorr(fa, factors=[1, 2], col=None, text=None, fname=None):
+    """
+    Plot factor loadings as a circle of correlation
+    
+    Built around the ETS factor_analyzer module (v0.2.3)
+    
+    Parameters
+    ----------
+    fa : factor_analyzer object
+    
+    Optional
+    --------
+    factors : list
+        A list indicating the factor loadings to plot 
+        Defaults to the first two factors
+    col : list
+        List of colors to assign to points on plot 
+        Defaults to black
+    
+    text : list
+        List of strings to assign to points
+    
+    fname : filepath
+        Path to save image
+    
+    Returns
+    -------
+    fig, ax : matplotlib figure handles
+        
+    See Abdi & Williams 2010 for more.
+    """
+    sns.set()
+    sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
+    f1 = int(factors[0])
+    f2 = int(factors[1])
+    fi1 = int(factors[0]-1)
+    fi2 = int(factors[1]-1)
+    
+    loadings = fa.loadings
+    eigs = fa.get_eigenvalues()[0].values
+    percentVar = (np.multiply(100, eigs)) / np.sum(eigs)
+    perToPlot = [percentVar[fi1], percentVar[fi2]]
+    
+    load1 = loadings.values[:, fi1]
+    load2 = loadings.values[:, fi2]
+    
+    xlabel = "Factor %d (%.2f%% of variance explained)" % (f1, perToPlot[0])
+    ylabel = "Factor %d (%.2f%% of variance explained)" % (f2, perToPlot[1])
+    circ = plt.Circle((0, 0), radius=1, edgecolor='w', facecolor='None', linewidth=1, linestyle='--')
+    
+    if col is None:
+        col = ['k']*len(load1)
+    
+    fig,ax = plt.subplots(figsize=(7.5,7.5))
+    ax.add_patch(circ)
+
+    ax.scatter(load1, load2, c=col, zorder=99, s=75, alpha=.75)
+    ax.axhline(0, color='w', linewidth=1)
+    ax.axvline(0, color='w', linewidth=1)
     ax.set_xlim(-1, 1)
     ax.set_ylim(-1, 1)
-    ax.set_xlabel('Factor %d' % int(flabel[0]), fontsize='x-large')
-    ax.set_ylabel('Factor %d' % int(flabel[1]), fontsize='x-large')
-    
+    ax.set_xlabel(xlabel, fontsize='x-large')
+    ax.set_ylabel(ylabel, fontsize='x-large')
     if text is not None and len(text) == len(load1):
         texts = []
         for i,s in enumerate(text):
@@ -155,7 +214,195 @@ def plotLoadings(fpair, flabel=[1,2], colors=None, text=None, fname=None):
         fig.savefig(fname, bbox_inches='tight')
     return fig, ax
 
+def plotCircleOfCorrMFA(loadings, eigs, factors=[1, 2], tableKey=None, col=None, text=None, fname=None):
+    """
+    Plot factor loadings as a circle of correlation - MFA version
+
+    Update - tableKey allows for plotting of all loadings at once
+        Note: can only plot three subtables' worth of loadings
+    
+    Parameters
+    ----------
+    loadings : numpy array
+        An N x 2 array where N is the number of variables
+    
+    eigs : list or numpy array
+        A list or vector of eigenvalues
+        
+    Optional
+    --------
+    tableKey : list of length N
+        A list that indicates which variable belongs to which subtable
+        Used if plotting loadings from multiple subtables
+        
+    factors : list
+        A list indicating the factor loadings that are being plotted
+        Defaults to the first two factors
+    
+    col : list of lists
+        List of colors to assign to points on plot 
+        Defaults to black
+    
+    text : list
+        List of strings to assign to points
+    
+    fname : filepath
+        Path to save image
+        
+    See Abdi & Williams 2010 for more.
+    """
+    sns.set()
+    sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
+    
+    markerList = ['*', 'd', 's']
+    
+    if tableKey:
+        keys = np.unique(tableKey)
+        plotData = []
+        for k in keys:
+            data = []
+            for i in range(loadings.shape[0]):
+                if k == tableKey[i]:
+                    data.append(loadings[i, :])
+            dataArray = np.asarray(data)
+            plotData.append(dataArray)
+    else:
+        plotData[0] = loadings
+                
+    f1 = int(factors[0])
+    f2 = int(factors[1])
+    fi1 = int(factors[0]-1)
+    fi2 = int(factors[1]-1)
+    percentVar = (np.multiply(100, eigs)) / np.sum(eigs)
+    perToPlot = [percentVar[fi1], percentVar[fi2]]
+
+    xlabel = "Factor %d (%.2f%% of variance explained)" % (f1, perToPlot[0])
+    ylabel = "Factor %d (%.2f%% of variance explained)" % (f2, perToPlot[1])
+    circ = plt.Circle((0, 0), radius=1, edgecolor='w', facecolor='None', linewidth=1, linestyle='--')
+    
+    fig,ax = plt.subplots(figsize=(7.5,7.5))
+    ax.add_patch(circ)
+    for i,p in enumerate(plotData):
+        load1 = p[:, 0]
+        load2 = p[:, 1]
+        if col is None:
+            color = ['k']*len(load1)
+        else:
+            color = col[i] 
+        ax.scatter(load1, load2, c=color, marker=markerList[i], zorder=99, s=75, alpha=.75)
+    
+    ax.axhline(0, color='w', linewidth=1)
+    ax.axvline(0, color='w', linewidth=1)
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(-1, 1)
+    ax.set_xlabel(xlabel, fontsize='x-large')
+    ax.set_ylabel(ylabel, fontsize='x-large')
+    if text is not None and len(text) == len(load1):
+        texts = []
+        for i,s in enumerate(text):
+            texts.append(ax.text(load1[i], load2[i], s, fontsize=10))
+        adjust_text(texts)
+        
+    if fname:
+        fig.savefig(fname, bbox_inches='tight')
+
+def plotFS(f, eigs, type='s', fs=[1, 2], tableKey=None, col=None, text=None, fname=None):
+    """
+    Plot factor scores or factor loadings (circle of correlation)
+    
+    Parameters
+    ----------
+    f : numpy array
+        An N x 2 array where N is the number of observations (factor scores)
+        or number of variables (factor loadings)
+    
+    eigs : list or numpy array
+        A list or vector of eigenvalues
+        
+    Optional
+    --------
+    type : string
+        String to indicate if you're plotting factor scores or loadings
+        Defaults to 's' - plotting factor scores
+        
+    tableKey : list of length N
+        A list that indicates which observation belongs to which subtable
+        Used if plotting loadings from multiple subtables
+        
+    fs : list
+        A list indicating the factors being plotted
+        Defaults to the first two factors
+    
+    col : list of lists
+        List of colors to assign to points on plot 
+        Defaults to black
+    
+    text : list
+        List of strings to assign to points
+    
+    fname : filepath
+        Path to save image
+        
+    See Abdi & Williams 2010 for more.
+    """
+    sns.set()
+    sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
+    
+    markerList = ['*', 'd', 's']
+    
+    if tableKey:
+        keys = np.unique(tableKey)
+        plotData = []
+        for k in keys:
+            data = []
+            for i in range(f.shape[0]):
+                if k == tableKey[i]:
+                    data.append(f[i, :])
+            dataArray = np.asarray(data)
+            plotData.append(dataArray)
+    else:
+        plotData[0] = f
+                
+    f1 = int(fs[0])
+    f2 = int(fs[1])
+
+    percentVar = (np.multiply(100, eigs)) / np.sum(eigs)
+    perToPlot = [percentVar[f1-1], percentVar[f2-1]]
+
+    xlabel = "Factor %d (%.2f%% of variance explained)" % (f1, perToPlot[0])
+    ylabel = "Factor %d (%.2f%% of variance explained)" % (f2, perToPlot[1])
+    
+    circ = plt.Circle((0, 0), radius=1, edgecolor='w', facecolor='None', linewidth=1, linestyle='--')
+    fig,ax = plt.subplots(figsize=(7.5,7.5))
+    if type != 's':
+        ax.add_patch(circ)
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
+    for i,p in enumerate(plotData):
+        fs1 = p[:, 0]
+        fs2 = p[:, 1]
+        if col is None:
+            color = ['k']*len(fs1)
+        else:
+            color = col[i] 
+        ax.scatter(fs1, fs2, c=color, marker=markerList[i], zorder=99, s=75, alpha=.75)
+    
+    ax.axhline(0, color='w', linewidth=1)
+    ax.axvline(0, color='w', linewidth=1)
+
+    ax.set_xlabel(xlabel, fontsize='x-large')
+    ax.set_ylabel(ylabel, fontsize='x-large')
+    if text is not None and len(text) == len(fs1):
+        texts = []
+        for i,s in enumerate(text):
+            texts.append(ax.text(fs1[i], fs2[i], s, fontsize=10))
+        adjust_text(texts)
+        
+    if fname:
+        fig.savefig(fname, bbox_inches='tight')
+
 def createColorSpace(loadingsPair):
+    #By JAH
     factorOne = loadingsPair[:,0]
     factorTwo = loadingsPair[:,1]
     R = np.sqrt(factorOne**2 + factorTwo**2)
@@ -163,11 +410,10 @@ def createColorSpace(loadingsPair):
     
     theta[theta<0] = 2*np.pi + theta[theta<0]
     hue = theta/(2*np.pi)
-    val = R
     
     hsv = np.ones([len(factorOne),3])
     hsv[:,0] = hue
-    hsv[:,2] = val
+    hsv[:,2] = R
     
     rgb = np.zeros([len(factorOne),3])
     rgb = hsv_to_rgb(hsv)
@@ -175,9 +421,9 @@ def createColorSpace(loadingsPair):
     return R, theta, rgb
 
 def createColorLegend(R, theta, fname=None):
-    figsize = 5
-    #labs example
-    #labs = ['+ F1','','+ F2','','- F1','','- F2','']
+    #By JAH
+    mpl.rcParams.update(mpl.rcParamsDefault)
+    figsize = 7.5
 
     fig = plt.figure(figsize=(figsize, figsize))
     fig.patch.set_facecolor('w')
@@ -196,7 +442,7 @@ def createColorLegend(R, theta, fname=None):
     
     image = np.dstack((t, np.ones_like(r), r))
     
-    color = image.reshape((image.shape[0]*image.shape[1],image.shape[2]))
+    color = image.reshape((image.shape[0]*image.shape[1], image.shape[2]))
     color = hsv_to_rgb(color)
     
     p = ax.pcolormesh(theta2, R2, np.zeros_like(R2), color=color)
@@ -208,33 +454,17 @@ def createColorLegend(R, theta, fname=None):
     ax.scatter(theta, R, c='w',s=75, edgecolors='none', alpha=.75)
     
     if fname is not None:
-        plt.savefig(fname, dpi=300, facecolor='w')
+        plt.savefig(fname, dpi=300, facecolor='w', bbox_inches='tight')
 
-def plotBrains(nodeCoords, nodeColors, fname=None):
-    numc = len(nodeColors)
-    adjacency_mat = np.zeros(shape=(numc, numc))
+def plotBrains(coords, colors, fname=None):
+    #Simplified from projUtils version
+    mpl.rcParams.update(mpl.rcParamsDefault)
     
-    brain_fig = plt.figure(figsize=[24,12])
-    plot_connectome(
-            adjacency_matrix=adjacency_mat,
-            node_coords=nodeCoords,
-            node_color=nodeColors,
-            display_mode='lr',
-            node_size=900,
-            figure=brain_fig,
-            output_file=fname,
-            black_bg=False)
-
-def normalizeR(x, mi=0, mx=1):
-    def nfunc(i, mi, mx):
-        return (i - mi) / (mx - mi)
-    j = [nfunc(i, mi, mx) for i in x]
-    return np.asarray(j)
-
-def convertToCmap(x, mi=0, mx=1, cmap='seismic'):
-    y = normalizeR(x, mi, mx)
-    cm = pylab.get_cmap(cmap)
-    return [cm(i) for i in y]
+    numc = len(colors)
+    adjMat = np.zeros(shape=(numc, numc))
+    fig = plt.figure(figsize=[24, 12])
+    plot_connectome(adjMat, coords, colors, display_mode='lr', node_size=900,
+                    figure=fig, output_file=fname, black_bg=False)
 
 def assignColPair(cpair, x):
     rgb = [cpair[0]] * len(x)
@@ -281,13 +511,16 @@ def _boostrapcontributions(data, eigs, nFactors, nIters=100):
         scores = fad.fit_transform(bootSample)
         scoresWeighted = (scores ** 2) * (1/data.shape[0])
         
-        eigRep = np.reshape(np.repeat(eigs[:nFactors], data.shape[0]), scores.shape, order="F")
+        eigRep = np.reshape(np.repeat(eigs[:nFactors], data.shape[0]),
+                            scores.shape, order="F")
         
         cont = scoresWeighted / eigRep
         clist.append(cont)
     return clist
 
+### Outdated, do not use
 def _plotCont(data,labels=None,colors=None,fname=None,meanCheck=True):
+    #Outdated version of what is now plotCircleOfCorr
     if colors is None:
         colors = ['tab:blue'] * len(data)
     if meanCheck==True:
@@ -321,3 +554,14 @@ def _plotCont(data,labels=None,colors=None,fname=None,meanCheck=True):
         fig.savefig(fname, bbox_inches='tight')
         return fig, ax
     return fig, ax, mu
+
+def _normalizeR(x, mi=0, mx=1):
+    def nfunc(i, mi, mx):
+        return (i - mi) / (mx - mi)
+    j = [nfunc(i, mi, mx) for i in x]
+    return np.asarray(j)
+
+def _convertToCmap(x, mi=0, mx=1, cmap='seismic'):
+    y = _normalizeR(x, mi, mx)
+    cm = pylab.get_cmap(cmap)
+    return [cm(i) for i in y]
