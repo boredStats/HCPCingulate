@@ -21,7 +21,7 @@ def centerMat(data):
     return data - np.mean(data, axis=0)
 
 def normTo1(data):
-    #Normalize all values to have a 0-1 range
+    #Normalize all values to have a -1 to 1 range
     mx = np.max(data)
     mn = np.min(data)
     d = mx-mn
@@ -121,7 +121,7 @@ def plotScree(eigenvalues, eigenPvals=None, kaiser=False, fname=None):
     ax2.set_ylim(0,max(percentVar)*1.2)
     ax2.set_ylabel('Percentage of variance explained', fontsize='xx-large')
 
-    if eigenPvals is not None and len(eigenPvals) == len(eigenvalues):
+    if eigenPvals and len(eigenPvals) == len(eigenvalues):
         #TO-DO: add p<.05 legend?
         pvalueCheck = [i for i,t in enumerate(eigenPvals) if t<.05]
         eigenCheck = [e for i,e in enumerate(eigenvalues) for j in pvalueCheck if i==j]
@@ -140,171 +140,6 @@ def plotScree(eigenvalues, eigenPvals=None, kaiser=False, fname=None):
     if fname:
         fig.savefig(fname, bbox_inches='tight')
     return fig, ax, ax2
-
-def plotCircleOfCorr(fa, factors=[1, 2], col=None, text=None, fname=None):
-    """
-    Plot factor loadings as a circle of correlation
-    
-    Built around the ETS factor_analyzer module (v0.2.3)
-    
-    Parameters
-    ----------
-    fa : factor_analyzer object
-    
-    Optional
-    --------
-    factors : list
-        A list indicating the factor loadings to plot 
-        Defaults to the first two factors
-    col : list
-        List of colors to assign to points on plot 
-        Defaults to black
-    
-    text : list
-        List of strings to assign to points
-    
-    fname : filepath
-        Path to save image
-    
-    Returns
-    -------
-    fig, ax : matplotlib figure handles
-        
-    See Abdi & Williams 2010 for more.
-    """
-    sns.set()
-    sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
-    f1 = int(factors[0])
-    f2 = int(factors[1])
-    fi1 = int(factors[0]-1)
-    fi2 = int(factors[1]-1)
-    
-    loadings = fa.loadings
-    eigs = fa.get_eigenvalues()[0].values
-    percentVar = (np.multiply(100, eigs)) / np.sum(eigs)
-    perToPlot = [percentVar[fi1], percentVar[fi2]]
-    
-    load1 = loadings.values[:, fi1]
-    load2 = loadings.values[:, fi2]
-    
-    xlabel = "Factor %d (%.2f%% of variance explained)" % (f1, perToPlot[0])
-    ylabel = "Factor %d (%.2f%% of variance explained)" % (f2, perToPlot[1])
-    circ = plt.Circle((0, 0), radius=1, edgecolor='w', facecolor='None', linewidth=1, linestyle='--')
-    
-    if col is None:
-        col = ['k']*len(load1)
-    
-    fig,ax = plt.subplots(figsize=(7.5,7.5))
-    ax.add_patch(circ)
-
-    ax.scatter(load1, load2, c=col, zorder=99, s=75, alpha=.75)
-    ax.axhline(0, color='w', linewidth=1)
-    ax.axvline(0, color='w', linewidth=1)
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(-1, 1)
-    ax.set_xlabel(xlabel, fontsize='x-large')
-    ax.set_ylabel(ylabel, fontsize='x-large')
-    if text is not None and len(text) == len(load1):
-        texts = []
-        for i,s in enumerate(text):
-            texts.append(ax.text(load1[i], load2[i], s, fontsize=10))
-        adjust_text(texts)
-        
-    if fname:
-        fig.savefig(fname, bbox_inches='tight')
-    return fig, ax
-
-def plotCircleOfCorrMFA(loadings, eigs, factors=[1, 2], tableKey=None, col=None, text=None, fname=None):
-    """
-    Plot factor loadings as a circle of correlation - MFA version
-
-    Update - tableKey allows for plotting of all loadings at once
-        Note: can only plot three subtables' worth of loadings
-    
-    Parameters
-    ----------
-    loadings : numpy array
-        An N x 2 array where N is the number of variables
-    
-    eigs : list or numpy array
-        A list or vector of eigenvalues
-        
-    Optional
-    --------
-    tableKey : list of length N
-        A list that indicates which variable belongs to which subtable
-        Used if plotting loadings from multiple subtables
-        
-    factors : list
-        A list indicating the factor loadings that are being plotted
-        Defaults to the first two factors
-    
-    col : list of lists
-        List of colors to assign to points on plot 
-        Defaults to black
-    
-    text : list
-        List of strings to assign to points
-    
-    fname : filepath
-        Path to save image
-        
-    See Abdi & Williams 2010 for more.
-    """
-    sns.set()
-    sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
-    
-    markerList = ['*', 'd', 's']
-    
-    if tableKey:
-        keys = np.unique(tableKey)
-        plotData = []
-        for k in keys:
-            data = []
-            for i in range(loadings.shape[0]):
-                if k == tableKey[i]:
-                    data.append(loadings[i, :])
-            dataArray = np.asarray(data)
-            plotData.append(dataArray)
-    else:
-        plotData[0] = loadings
-                
-    f1 = int(factors[0])
-    f2 = int(factors[1])
-    fi1 = int(factors[0]-1)
-    fi2 = int(factors[1]-1)
-    percentVar = (np.multiply(100, eigs)) / np.sum(eigs)
-    perToPlot = [percentVar[fi1], percentVar[fi2]]
-
-    xlabel = "Factor %d (%.2f%% of variance explained)" % (f1, perToPlot[0])
-    ylabel = "Factor %d (%.2f%% of variance explained)" % (f2, perToPlot[1])
-    circ = plt.Circle((0, 0), radius=1, edgecolor='w', facecolor='None', linewidth=1, linestyle='--')
-    
-    fig,ax = plt.subplots(figsize=(7.5,7.5))
-    ax.add_patch(circ)
-    for i,p in enumerate(plotData):
-        load1 = p[:, 0]
-        load2 = p[:, 1]
-        if col is None:
-            color = ['k']*len(load1)
-        else:
-            color = col[i] 
-        ax.scatter(load1, load2, c=color, marker=markerList[i], zorder=99, s=75, alpha=.75)
-    
-    ax.axhline(0, color='w', linewidth=1)
-    ax.axvline(0, color='w', linewidth=1)
-    ax.set_xlim(-1, 1)
-    ax.set_ylim(-1, 1)
-    ax.set_xlabel(xlabel, fontsize='x-large')
-    ax.set_ylabel(ylabel, fontsize='x-large')
-    if text is not None and len(text) == len(load1):
-        texts = []
-        for i,s in enumerate(text):
-            texts.append(ax.text(load1[i], load2[i], s, fontsize=10))
-        adjust_text(texts)
-        
-    if fname:
-        fig.savefig(fname, bbox_inches='tight')
 
 def plotFS(f, eigs, type='s', fs=[1, 2], tableKey=None, col=None, text=None, fname=None):
     """
@@ -333,9 +168,10 @@ def plotFS(f, eigs, type='s', fs=[1, 2], tableKey=None, col=None, text=None, fna
         A list indicating the factors being plotted
         Defaults to the first two factors
     
-    col : list of lists
+    col : list of colors
         List of colors to assign to points on plot 
         Defaults to black
+        If tablekey is provided, col will repeat
     
     text : list
         List of strings to assign to points
@@ -348,7 +184,7 @@ def plotFS(f, eigs, type='s', fs=[1, 2], tableKey=None, col=None, text=None, fna
     sns.set()
     sns.set_style("darkgrid", {"axes.facecolor": ".3", "grid.color": ".4"})
     
-    markerList = ['*', 'd', 's']
+    markerList = ['o', 'd', 's']
     
     if tableKey:
         keys = np.unique(tableKey)
@@ -360,8 +196,11 @@ def plotFS(f, eigs, type='s', fs=[1, 2], tableKey=None, col=None, text=None, fna
                     data.append(f[i, :])
             dataArray = np.asarray(data)
             plotData.append(dataArray)
+        col = [col]*3
     else:
-        plotData[0] = f
+        col = [col]
+        plotData = []
+        plotData.append(f)
                 
     f1 = int(fs[0])
     f2 = int(fs[1])
